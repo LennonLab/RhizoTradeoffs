@@ -105,11 +105,9 @@ ggplot(as.data.frame(biomass_raw), aes(x=trt,y=mean)) +
         axis.title.x = element_blank())
 #############################
 
-#Assess the effect of rhizobia presence over time points. Due to variation in magnitude of plant biomass, data was log10 transformed. The harvest date was included as a random effect initially.
+#Assess the effect of rhizobia presence over time points. Due to variation in magnitude of plant biomass, data was log10 transformed.
 
-biomass_date = lmer(log10(p_dry_mg) ~ X461*X262*w_avg + (1|w_est),data=dat)
 biomass = lm(log10(p_dry_mg) ~ X461*X262*w_avg,data=dat)
-anova(biomass_date,biomass) #no effect so dropped
 
 summary(biomass)
 AIC(biomass)
@@ -200,11 +198,8 @@ ggplot(as.data.frame(dat), aes(x=d_post_inoc,y=p_wet,color=trt)) +
 
 #############################
 
-#Assess the effect of rhizobia presence over time points. Due to variation in magnitude of plant biomass, data was log10 transformed. The harvest date was included as a random effect initially.
-
-wet_date = lmer(log10(p_wet) ~ X461*X262*w_avg + (1|w_est),data=dat)
+#Assess the effect of rhizobia presence over time points. Due to variation in magnitude of plant biomass, data was log10 transformed. 
 wet = lm(log10(p_wet) ~ X461*X262*w_avg,data=dat)
-anova(wet_date,wet) #no effect so dropped
 
 summary(wet)
 AIC(wet)
@@ -330,7 +325,7 @@ lines(smooth.spline(fitted(gr_mdl),rgr_res)); #fairly even spread
 
 #Obtain predicted biomass and CI over time to plot
 #need to redo the model fit since the response variable can't be transformed in the model function for predict
-y=log10(p_dry_mg)
+y=log10(dat$p_dry_mg)
 gr_mdl2 = gnls(y ~ SSlogis(d_post_inoc,Asym,xmid,scal),data = dat,start=list(Asym=c(fit_Apo[1],fit_262[1],fit_461[1],fit_Mix[1]),xmid=c(fit_Apo[2],fit_262[2],fit_461[2],fit_Mix[2]),scal=c(fit_Apo[3],fit_262[3],fit_461[3],fit_Mix[3])),params=list(Asym~trt+0,scal~trt+0,xmid~trt+0))
 new = data.frame(d_post_inoc = rep(seq(min(dat$d_post_inoc),max(dat$d_post_inoc),by=1),4),
                  trt = rep(unique(dat$trt),each=length(seq(min(dat$d_post_inoc),max(dat$d_post_inoc),by=1))))
@@ -590,7 +585,7 @@ ggplot(as.data.frame(dat), aes(x=d_post_inoc,y=p_dry_mg/p_wet,color=trt)) +
 #Assess the effect of rhizobia presence over time points. 
 x = dat$p_dry_mg/dat$p_wet
 dmc = betareg(x ~ X461*X262*w_avg,weights = log10(p_wet),data=dat)
- 
+
 summary(dmc)
 AIC(dmc)
 
@@ -643,9 +638,9 @@ ggplot(dmc_plot, aes(x=trt,y=emmean)) +
 
 ###Leaf count related analyses
 
-####Total leaf count
+####Total leaf count - developmental stages
 ```{r}
-#calcualte the geometric mean and geometric CI 
+#calculate the geometric mean and geometric CI 
 leaf_raw = dat %>% group_by(w_avg,X461,X262,trt) %>% summarise(mean = mean(log(leaf_T)),l.CI = mean(log(leaf_T))-CI(log(leaf_T)),u.CI = mean(log(leaf_T))+CI(log(leaf_T)))
 leaf_raw$trt = factor(leaf_raw$trt,levels = c("Apo","262","461","Mix"))
 
@@ -663,18 +658,7 @@ ggplot(as.data.frame(leaf_raw), aes(x=trt,y=exp(mean))) +
         axis.text.y=element_text(size=rel(0.9)),
         axis.title.x = element_blank())
 
-#plot leaf by time (d)
-ggplot(as.data.frame(dat), aes(x=d_post_inoc,y=leaf_T,color=trt)) +
-  geom_point(size=5)+
-  geom_smooth(method='loess') +
-  ylab(expression("Leaf count")) +
-  theme_bw(base_size = 30) +
-  theme(panel.grid = element_blank(),
-        panel.border = element_rect(size = 1, colour = "black",fill=NA),
-        panel.background = element_rect(fill="white"),
-        axis.text.x=element_text(size=rel(0.9)),
-        axis.text.y=element_text(size=rel(0.9)),
-        axis.title.x = element_blank())
+#############################
 
 #Assess the effect of rhizobia presence over time points. 
 
@@ -683,7 +667,8 @@ hist(dat$leaf_T) #Poisson like distribution
 #leaf = glm(leaf_T ~ X461*X262*w_avg,family=poisson(link="log"),data=dat)
 leaf = glm(leaf_T ~ X461*X262*w_avg,family=quasipoisson(link="log"),data=dat) #Evidence of overdispersion
 
-pchisq(summary(leaf)$dispersion * leaf$df.residual, leaf$df.residual, lower = F) # significance for overdispersion; p = 1.253203e-16
+#1 - pchisq(mortla.mdl$deviance, mortla.mdl$df.resid)
+1-pchisq(leaf$deviance,leaf$df.residual) #significant dispersion, need to do quasipoission family model
 
 summary(leaf)
 
@@ -695,22 +680,19 @@ leaf_em = emmeans(leaf, ~ X262*X461|w_avg,type="response")
 pairs(leaf_em)
 multcomp::cld(leaf_em)
 
-#setup data to plot
-leaf_plot = as.data.frame(leaf_em)
-leaf_plot$trt = rep('A')
-for(i in 1:nrow(leaf_plot)) {
-  ifelse(leaf_plot[i,1]%in%"0" & leaf_plot[i,2]%in%"1",leaf_plot[i,9]<-"HQ",
-  ifelse(leaf_plot[i,1]%in%"1" & leaf_plot[i,2]%in%"0",leaf_plot[i,9]<-"LQ",
-  ifelse(leaf_plot[i,1]%in%"1" & leaf_plot[i,2]%in%"1",leaf_plot[i,9]<-"LQ:HQ",leaf_plot[i,9]<-"Apo")))
-}
-leaf_plot$trt = factor(leaf_plot$trt,levels = c("Apo","LQ","HQ","LQ:HQ"))
+#############################
 
+#setup data to plot the geometric mean and GSE
+raw.leaf = dat %>%
+  group_by(trt,w_avg) %>%
+  summarise(g.mean = exp(mean(log(leaf_T))),g.se = exp(sd(log(leaf_T))/sqrt(length(leaf_T)))) %>%
+  mutate(trt2 = ifelse(trt%in%"Apo","A",ifelse(trt%in%"262","LQ",ifelse(trt%in%"461","HQ","LQ:HQ"))))
 
-ggplot(leaf_plot, aes(x=trt,y=rate)) +
+ggplot(raw.leaf, aes(x=trt2,y=g.mean)) +
   geom_point(size=5)+
-  geom_errorbar(aes(ymin=asymp.LCL,ymax=asymp.UCL),width=0.3) +
-  ylab(expression(atop("Leaf count",paste("(mean \U00B1 CI, n = 5)")))) +
-  #scale_y_continuous(limits=c(0.85,4),breaks=seq(1,4,by=1))+
+  geom_errorbar(aes(ymin=g.mean-g.se,ymax=g.mean+g.se),width=0.3) +
+  ylab(expression(atop("Leaf count",paste("(geometric mean \U00B1 GSE, n = 5)")))) +
+  scale_y_continuous(limits=c(0,80),breaks=seq(0,80,by=20))+
   facet_grid(.~w_avg) +
   theme_bw(base_size = 30) +
   theme(panel.grid = element_blank(),
@@ -721,10 +703,10 @@ ggplot(leaf_plot, aes(x=trt,y=rate)) +
         axis.title.x = element_blank())
 ```
 
-#### Plant development time
+#### Plant development stages
 ```{r}
 #plot biomass by time relationship between time and biomass
-ggplot(as.data.frame(dat), aes(x=(d_post_inoc),y=(leaf_T),color=trt)) +
+ggplot(as.data.frame(dat), aes(x=(d_post_inoc),y=log10(leaf_T),color=trt)) +
   geom_point(size=5)+
   geom_smooth(method='loess') +
   #facet_grid(trt~.)+
@@ -736,88 +718,277 @@ ggplot(as.data.frame(dat), aes(x=(d_post_inoc),y=(leaf_T),color=trt)) +
         axis.text.y=element_text(size=rel(0.9)),
         axis.title.x = element_blank())
 
-#Assess the effect of rhizobia presence over time points. Due to variation in magnitude of plant leaf count, data was log10 transformed. Compared power law and polynomial function. Polynomial function was a much better fit by AIC (power:69 vs. poly:-106)
+#############################
 
-rdr = lm(log10(leaf_T) ~ X461*X262*poly(d_post_inoc,2,raw=TRUE),data=dat) #compare degree 1 coefficients for instantaneous RGR
-#rdr = lm(log(leaf_T) ~ X461*X262*log(d_post_inoc),data=dat) #power law to describe the change in RGR over time
+#Assess the effect of rhizobia presence over time points. Due to variation in magnitude of leaf count, data was log10 transformed.
 
-summary(rdr)
-AIC(rdr)
+#First, subset the dataset by treatment to get the initial start values for each treatment to model in the 3-parameter logistic growth model
+lcfit_Apo <- getInitial(log10(leaf_T) ~ SSlogis(d_post_inoc, Asym, xmid, scal), data = dat[dat$trt=="Apo",])
+print(lcfit_Apo)
+lcfit_461 <- getInitial(log10(leaf_T) ~ SSlogis(d_post_inoc, Asym, xmid, scal), data = dat[dat$trt=="461",])
+print(lcfit_461)
+lcfit_262 <- getInitial(log10(leaf_T) ~ SSlogis(d_post_inoc, Asym, xmid, scal), data = dat[dat$trt=="262",])
+print(lcfit_262)
+lcfit_Mix <- getInitial(log10(leaf_T) ~ SSlogis(d_post_inoc, Asym, xmid, scal), data = dat[dat$trt=="Mix",])
+print(lcfit_Mix)
+lcfit_full <- getInitial(log10(leaf_T) ~ SSlogis(d_post_inoc, Asym, xmid, scal), data = dat)
+print(lcfit_full)
 
-#assess individual fit for each treatment for polynomial regression
-summary(lm(log10(leaf_T) ~ poly(d_post_inoc,2,raw=TRUE),data=dat[dat$trt=="Apo",])) #R2=0.9264
-summary(lm(log10(leaf_T) ~ poly(d_post_inoc,2,raw=TRUE),data=dat[dat$trt=="461",])) #R2=0.9415
-summary(lm(log10(leaf_T) ~ poly(d_post_inoc,2,raw=TRUE),data=dat[dat$trt=="262",])) #R2=0.8984
-summary(lm(log10(leaf_T) ~ poly(d_post_inoc,2,raw=TRUE),data=dat[dat$trt=="Mix",])) #R2=0.9474
+#Full 3-parameter logistic growth model with each parameter term varying by treatment
+lc_mdl = gnls(log10(leaf_T) ~ SSlogis(d_post_inoc,Asym,xmid,scal),data = dat,start=list(Asym=c(lcfit_Apo[1],lcfit_262[1],lcfit_461[1],lcfit_Mix[1]),xmid=c(lcfit_Apo[2],lcfit_262[2],lcfit_461[2],lcfit_Mix[2]),scal=c(lcfit_Apo[3],lcfit_262[3],lcfit_461[3],lcfit_Mix[3])),params=list(Asym~trt+0,scal~trt+0,xmid~trt+0))
+summary(lc_mdl)
+
+#Goodness of fit check for overall model
+summary(lc_mdl) # RSE = 0.1313849 = log10(count) > does that mean the RSE is approx. 2 leaves?
+cor(log10(dat$leaf_T),predict(lc_mdl)) #r = 0.9691879
 
 #assess normality of residuals
-rdr_res = residuals(rdr)
-summary(rdr_res) #mean and median are close
-qqPlot(rdr_res) #falls within 95% CI
-hist(rdr_res) #unimodal and fairly gaussian looking
-boxplot(rdr_res) #fairly even spread of data
+lc_res = residuals(lc_mdl)
+summary(lc_res) #mean and median are close
+qqPlot(lc_res) #falls within 95% CI
+hist(lc_res) #unimodal and fairly Gaussian looking
+boxplot(lc_res) #fairly even spread of data
 #All looks okay
 
-#assess homoscedasticity of resdiuals
-plot(fitted(rdr),rdr_res);
+#assess homoscedasticity of residuals
+plot(fitted(lc_mdl),lc_res);
 abline(h=0,lty=2);
-lines(smooth.spline(fitted(rdr),rdr_res)); #fairly even spread
+lines(smooth.spline(fitted(lc_mdl),lc_res)); #fairly even spread
 #All looks okay
 
-#omnibus test
-Anova(rdr,type="III")
+#############################
 
-#post hoc slope comparison to determine whether the presence of the other microbes influences the change in rdr
-#summary(emtrends(rdr,specs=pairwise ~ X461|X262,var="log(d_post_inoc)",level = 0.975),infer=TRUE)
-#summary(emtrends(rdr,specs=pairwise ~ X262|X461,var="log(d_post_inoc)",level = 0.975),infer=TRUE)
-#summary(emtrends(rdr,specs=pairwise ~ X262+X461,var="log(d_post_inoc)"),infer=TRUE) #compare change in rdr
-summary(emtrends(rdr,specs=pairwise ~ X262+X461,var="d_post_inoc",degree=1),infer=TRUE) #compare instantaneous rdr
+#Obtain predicted biomass and CI over time to plot
+#need to redo the model fit since the response variable can't be transformed in the model function for predict
+ylc=log10(dat$leaf_T)
+lc_mdl2 = gnls(ylc ~ SSlogis(d_post_inoc,Asym,xmid,scal),data = dat,start=list(Asym=c(lcfit_Apo[1],lcfit_262[1],lcfit_461[1],lcfit_Mix[1]),xmid=c(lcfit_Apo[2],lcfit_262[2],lcfit_461[2],lcfit_Mix[2]),scal=c(lcfit_Apo[3],lcfit_262[3],lcfit_461[3],lcfit_Mix[3])),params=list(Asym~trt+0,scal~trt+0,xmid~trt+0))
+newlc = data.frame(d_post_inoc = rep(seq(min(dat$d_post_inoc),max(dat$d_post_inoc),by=1),4),
+                 trt = rep(unique(dat$trt),each=length(seq(min(dat$d_post_inoc),max(dat$d_post_inoc),by=1))))
+predframelc <- predict_gnls(lc_mdl2,newdata = new,interval = "confidence")
+newlc = cbind(newlc,predframelc)
 
-#presence of the rhizobia induces similar changes in relative growth rate, while a lack of rhizobia results in slower relative growth rate.
+predframelc <- with(dat,expand.grid(d_post_inoc=unique(d_post_inoc),trt=levels(trt)))
+predframelc$x <- predict(lc_mdl,newdata=predframe)
 
-#Plot fitted polynomial regression
-
-ggplot(dat, aes(x=d_post_inoc,y=log10(leaf_T),color=trt)) +
-  geom_point(size=5)+
-  stat_smooth(method=lm,formula=y~poly(x,2,raw=TRUE)) +
-  ylab(expression(log[10]~"(Leaf count)")) +
-  scale_x_continuous(limits=c(0,120),breaks=seq(0,120,by=30))+
-  scale_y_continuous(limits=c(0,3),breaks=seq(0,4,by=1))+
+#plot data
+ggplot() +
+  geom_point(data=dat,aes(x=d_post_inoc,y=log10(leaf_T),color=trt),size=5)+
+  geom_smooth(data=newlc,aes(x=d_post_inoc,y=p_dry_mg<-Estimate,color=trt)) +
+  geom_ribbon(data=newlc,aes(x=d_post_inoc,ymin=Q2.5,ymax=Q97.5,color=trt),alpha=0.1,linetype=2) +
+ # scale_y_continuous(limits=c(0.5,4),breaks=seq(0.5,4,by=0.5))+
+  scale_x_continuous(limits=c(15,115),breaks=seq(15,115,by=20))+
   theme_bw(base_size = 30) +
+  xlab(expression("Time [dpi]")) +
+  ylab(expression(Log[10]~"(leaf count)"))+
   theme(panel.grid = element_blank(),
         panel.border = element_rect(size = 1, colour = "black",fill=NA),
         panel.background = element_rect(fill="white"),
-        axis.text.x=element_text(size=rel(0.9),angle=45,h=1),
+        axis.text.x=element_text(size=rel(0.9)),
+        axis.text.y=element_text(size=rel(0.9)))
+
+#############################
+
+#Assess each model parameter to test whether it significanlty differs among treatments
+
+#Drop the inverse umax term
+umax_nulllc = gnls(log10(leaf_T) ~ SSlogis(d_post_inoc,Asym,xmid,scal),data = dat,start=list(Asym=c(lcfit_Apo[1],lcfit_262[1],lcfit_461[1],lcfit_Mix[1]),xmid=c(lcfit_Apo[2],lcfit_262[2],lcfit_461[2],lcfit_Mix[2]),scal=lcfit_full[3]),params=list(Asym~trt+0,scal~1,xmid~trt+0))
+summary(umax_nulllc)
+
+anova(umax_nulllc,lc_mdl) # p = 0.0493
+
+#Drop the mid point term when plants reach umax
+xmid_nulllc = gnls(log10(leaf_T) ~ SSlogis(d_post_inoc,Asym,xmid,scal),data = dat,start=list(Asym=c(lcfit_Apo[1],lcfit_262[1],lcfit_461[1],lcfit_Mix[1]),xmid=lcfit_full[2],scal=c(lcfit_Apo[3],lcfit_262[3],lcfit_461[3],lcfit_Mix[3])),params=list(Asym~trt+0,scal~trt+0,xmid~1))
+summary(xmid_nulllc)
+
+anova(xmid_nulllc,lc_mdl) # p = 0.0619
+
+#Drop the asymptote term
+Asym_nulllc = gnls(log10(leaf_T) ~ SSlogis(d_post_inoc,Asym,xmid,scal),data = dat,start=list(Asym=lcfit_full[1],xmid=c(lcfit_Apo[2],lcfit_262[2],lcfit_461[2],lcfit_Mix[2]),scal=c(lcfit_Apo[3],lcfit_262[3],lcfit_461[3],lcfit_Mix[3])),params=list(Asym~1,scal~trt+0,xmid~trt+0))
+summary(Asym_nulllc)
+
+anova(Asym_nulllc,lc_mdl) # p = 0.0016
+
+#Obtain CI for each parameter to show among treatment differences
+
+lc_ci = as.data.frame(intervals(lc_mdl)$coef) #normally distributed confidence intervals for each parameter
+lc_ci$coef = c(rep('K',4),rep('umax',4),rep('xmid',4))
+lc_ci$trt = rep(c('A','LQ','HQ','LQ:HQ'))
+
+#K
+ggplot(lc_ci[gr_ci$coef=="K",],aes(x=trt,y=est.))+
+  geom_point(size=5)+
+  geom_errorbar(aes(ymin=lower,ymax=upper),width=0.2) +
+  #scale_y_continuous(limits=c(1.9,4),breaks=seq(2,4,by=1))+
+  theme_bw(base_size = 30) +
+  ylab(expression(Log[10]~"(leaf count)"))+
+  theme(panel.grid = element_blank(),
+        panel.border = element_rect(size = 1, colour = "black",fill=NA),
+        panel.background = element_rect(fill="white"),
+        axis.text.x=element_text(size=rel(0.9)),
         axis.text.y=element_text(size=rel(0.9)),
         axis.title.x = element_blank())
 
-# Plot RGR (first degree marginal slopes) among treatments
-RGR = as.data.frame(summary(emtrends(rgr,specs=pairwise ~ X262+X461,var="d_post_inoc",degree=1))$emtrends)
-RGR$trt = rep('A')
-for(i in 1:nrow(RGR)) {
-  ifelse(RGR[i,1]%in%"0" & RGR[i,2]%in%"1",RGR[i,8]<-"HQ",
-  ifelse(RGR[i,1]%in%"1" & RGR[i,2]%in%"0",RGR[i,8]<-"LQ",
-  ifelse(RGR[i,1]%in%"1" & RGR[i,2]%in%"1",RGR[i,8]<-"LQ:HQ","Apo")))
+#xmid
+ggplot(lc_ci[gr_ci$coef=="xmid",],aes(x=trt,y=est.))+
+  geom_point(size=5)+
+  geom_errorbar(aes(ymin=lower,ymax=upper),width=0.2) +
+  scale_y_continuous(limits=c(8,40),breaks=seq(10,40,by=10))+
+  theme_bw(base_size = 30) +
+  ylab(expression("Mean development time [d]"))+
+  theme(panel.grid = element_blank(),
+        panel.border = element_rect(size = 1, colour = "black",fill=NA),
+        panel.background = element_rect(fill="white"),
+        axis.text.x=element_text(size=rel(0.9)),
+        axis.text.y=element_text(size=rel(0.9)),
+        axis.title.x = element_blank())
+
+#umax
+ggplot(lc_ci[gr_ci$coef=="umax",],aes(x=trt,y=1/est.))+
+  geom_point(size=5)+
+  geom_errorbar(aes(ymin=1/lower,ymax=1/upper),width=0.2) +
+  #scale_y_continuous(limits=c(0.035,0.14),breaks=seq(0.04,0.14,by=0.02))+
+  theme_bw(base_size = 30) +
+  ylab(expression("Maximum growth rate"))+
+  theme(panel.grid = element_blank(),
+        panel.border = element_rect(size = 1, colour = "black",fill=NA),
+        panel.background = element_rect(fill="white"),
+        axis.text.x=element_text(size=rel(0.9)),
+        axis.text.y=element_text(size=rel(0.9)),
+        axis.title.x = element_blank())
+
+#############################
+
+#Obtain biomass adjusted relative growth rate
+
+#Convert model parameters to obtain maximum growth rate (umax), carrying capacity (K), and intercept (b)
+parmlc = as.data.frame(matrix(nrow=4,ncol=7))
+base::colnames(parmlc) <- c("trt","Asym","scal","xmid","K","umax","b")
+
+#obtain SSlogis model parameters
+mdllc_coefs = coef(lc_mdl)
+for(i in 1:4) {
+  x = as.matrix(unique(dat$trt))
+  parmlc[i,1] <- x[i,] #add treatment name
+  y = mdllc_coefs[grepl(x[i,],names(mdllc_coefs))] #grab treatment specific coefficients
+  parmlc[i,2:4] <- y #add 2:Asym, 3:scal, and 4:xmid
 }
-RGR$trt = factor(RGR$trt,levels = c("A","HQ","LQ","LQ:HQ"))
 
-ggplot(RGR, aes(x=trt,y=d_post_inoc.trend)) +
-  geom_point(size=5)+
-  geom_errorbar(aes(ymin=d_post_inoc.trend-SE,ymax=d_post_inoc.trend+SE),width=0.2) +
-  ylab(expression("Relative growth rate")) +
-  scale_y_continuous(limits=c(0.009,0.04),breaks=seq(0.01,.04,by=0.01))+
+#Convert SSlogis model parameters for model: (b*K)/(b+(K-b)*exp(-r*t))
+for(i in 1:4) { #i = rows
+  parmlc[i,5] <- parmlc[i,2] #K; formula: K = Asym
+  parmlc[i,6] <- 1/parmlc[i,3] #umax; formula: umax = 1/scal
+  parmlc[i,7] <- parmlc[i,2]/(1+exp(parmlc[i,4]/parmlc[i,3])) #b; formula: b = Asym/(1+exp(xmid/scal))
+}
+
+#Calculate the RGR standardized to mass and then will compare the RGR at the average biomass among treatments to correct for variation in initial size
+
+t = seq(min(dat$d_post_inoc),max(dat$d_post_inoc),0.25) #time sequence by quarter day along the measured times
+RGRl = as.data.frame(matrix(nrow=length(t)*4,ncol=6)) #matrix to save RGR calculations
+base::colnames(RGRl) <- c("trt","time","count","RGRl","lwr","upr")
+RGRl$trt <- c(rep(parmlc[1,1],length(t)),rep(parmlc[2,1],length(t)),rep(parmlc[3,1],length(t)),rep(parmlc[4,1],length(t))) #add treatment IDs
+RGRl$time <- rep(t,4) #add time sequence
+
+#Set seed for distribution sampling in the for loop
+set.seed(124)
+
+for(i in 1:4) {
+  name = as.matrix(unique(dat$trt))[i] #grab treatment ID
+  x_parms = parmlc[parmlc$trt%in%name,] #grab the treatment coefficients
+  K = x_parms[,5] #carrying capacity
+  umax = x_parms[,6] #maximum growth rate
+  b = x_parms[,7] #intercept
+  
+  #grab 10000 random replicates from a multivariate normal distribution using the model coefficients and their covariance matrix
+  cov <- lc_mdl$varBeta #grab the covariance matrix for the coefficients
+  x_cov <- cov[grepl(name,row.names(cov)),grepl(name,base::colnames(cov))] #grab treatment specific covariates
+  row.names(x_cov) <- c("Asym","scal","xmid") #rename
+  base::colnames(x_cov) <- c("Asym","scal","xmid") #rename
+  x_coef <- x_parms[,2:4] #Asym, scal, and xmid
+  x <- y <- data.frame(rmvnorm(n=10000, mean=as.matrix(x_coef), sigma=x_cov))
+  base::colnames(x) <- base::colnames(y) <- c("Asym","scal","xmid")
+		x$K  <- y$Asym #carrying capacity
+		x$umax  <- 1/y$scal #maximum growth rate
+		x$b <- y$Asym/(1 + exp(y$xmid/y$scal)) #intercept
+		MCI <- RGRlCI <- matrix(NA, ncol = length(t), nrow = nrow(x))
+		
+		#calcualte the biomass and RGRm at each time point using the randomly sampled parameters to calculate the CIs for RGRm
+			for(a in 1:nrow(x)){
+			  x.a  <- x[a,]
+		  	base::colnames(x.a) <- base::colnames(x)
+		  	MCI[a,]     <- (x.a$b*x.a$K)/(x.a$b+(x.a$K-x.a$b)*exp(-x.a$umax*t)) #leaf calculation
+		  	RGRlCI[a,] <- x.a$umax*MCI[a,]*(1 - MCI[a,]/x.a$K) #RGRm calculation
+			}
+		CIs <- summarizer(list(RGRlCI),0.05) #summarize the CI for the RGRl at 0.05 alpha threshold 
+		print(name)
+		temp=matrix(c(1,390,779,1168,389,778,1167,1556),ncol=2,nrow=4)
+		strt = temp[i,1]
+		fin = temp[i,2]
+		RGRl[strt:fin,5:6] <- CIs #add the lower and upper 95% confidence intervals
+		
+		#below, calcualtes the predicted biomass and their respecitve RGRm
+  for(j in strt:fin) {
+    times = RGRl[j,2]
+    m = (b*K)/(b+(K-b)*exp(-umax*times)) #leaf
+    RGRl[j,3] <- m #save leaf
+    RGRl[j,4] <- umax*m*(1-m/K) #calculate RGRm
+  }
+}
+
+#plot the RGR over estimated biomass
+ggplot(data=RGRl,aes(x=count,y=RGRl,color=trt)) +
+  geom_smooth() +
+  geom_ribbon(aes(ymin=lwr,ymax=upr),alpha=0.1,linetype=2) +
+  #scale_x_continuous(limits=c(0.9,4),breaks=seq(1,4,by=1))+
+  #scale_y_continuous(limits=c(0,0.1),breaks=seq(0,0.1,by=0.02))+
   theme_bw(base_size = 30) +
+  ylab(expression("Relative growth rate")) +
+  xlab(expression(Log[10]~"(leaf count)"))+
   theme(panel.grid = element_blank(),
         panel.border = element_rect(size = 1, colour = "black",fill=NA),
         panel.background = element_rect(fill="white"),
-        axis.text.x=element_text(size=rel(0.9),angle=45,h=1),
-        axis.text.y=element_text(size=rel(0.9)),
-        axis.title.x = element_blank())
+        axis.text.x=element_text(size=rel(0.9),h=1),
+        axis.text.y=element_text(size=rel(0.9)))
+
+#Find the RGR at the mean estimated leaf count
+mean(RGRl$count) #1.280613 which is great than the max count for the apos, so subset within apo range
+min(RGRl[RGRl$trt=="Apo",3]) #0.5465385
+max(RGRl[RGRl$trt=="Apo",3]) #1.126734
+mean(RGRl[RGRl$count<1.126734&RGRl$count>0.5465385,3]) #0.9004817
+mean(RGRl[RGRl$trt!="Apo",3]) #1.391973
+sum(RGRl[RGRl$count<1.126734&RGRl$count>0.5465385&RGRl$trt!="Apo",3])/sum(RGRl[RGRl$trt!="Apo",3]) #14.3%
+
+RGRlextract = RGRl[RGRl$count>0.8&RGRl$count<1.5,] %>%
+  mutate(rate = RGRl) %>%
+  group_by(trt) %>%
+  summarise(rgr = predict(loess(rate~count),c(0.9004817,1.391973)),LCI = predict(loess(lwr~count),c(0.9004817,1.391973)),UCI = predict(loess(upr~count),c(0.9004817,1.391973))) %>%
+  mutate(count = c(0.9004817,1.391973))
+
+RGRlextract$trt2 = c(rep("LQ",2),rep("HQ",2),rep("A",2),rep("LQ:HQ",2))
+RGRlextract$trt2 = factor(RGRextract$trt2,levels=c("A","HQ","LQ","LQ:HQ"))
+RGRlextract$slope = rep(c("Among-treatment","Rhizobia-specific"),4)
+
+ggplot(na.omit(RGRlextract),aes(x=trt2,y=rgr)) +
+  geom_point(size=5)+
+  geom_errorbar(aes(ymin=LCI,ymax=UCI),width=0.2) +
+  #scale_y_continuous(limits=c(0,0.1),breaks=seq(0,0.1,by=0.02))+
+  facet_grid(.~slope,scales="free") +
+  theme_bw(base_size = 30) +
+  ylab(expression("Relative growth rate")) +
+  theme(panel.grid = element_blank(),
+        panel.border = element_rect(size = 1, colour = "black",fill=NA),
+        panel.background = element_rect(fill="white"),
+        axis.text.x=element_text(size=rel(0.9)),
+        axis.text.y=element_text(size=rel(0.9)))
+```
+
+####Leaf senescense rate
+```{r}
+
 ```
 
 ###Stolon count
 ```{r}
-#calcualte the mean and CI 
+#calculate the mean and CI 
 stol_raw = dat %>% group_by(w_avg,X461,X262,trt) %>% summarise(mean = mean(stolon),l.CI = mean(stolon)-CI(stolon),u.CI = mean(stolon)+CI(stolon))
 stol_raw$trt = factor(stol_raw$trt,levels = c("Apo","262","461","Mix"))
 
@@ -832,19 +1003,22 @@ ggplot(as.data.frame(stol_raw), aes(x=trt,y=mean)) +
   theme(panel.grid = element_blank(),
         panel.border = element_rect(size = 1, colour = "black",fill=NA),
         panel.background = element_rect(fill="white"),
-        axis.text.x=element_blank(),
+        axis.text.x=element_text(size=rel(0.9)),
         axis.text.y=element_text(size=rel(0.9)),
         axis.title.x = element_blank())
 
 # Compare the effect of rhizobia presence over each timepoint with poisson regression
-hist(dat$stolon) #Poisson like distribution
+hist(dat$stolon)
+hist(as.matrix(subset(dat,stolon>0,select=colnames(dat)[24]))) #Poisson like distribution
 
 #stol = glm(stolon+1 ~ X461*X262*w_avg,family=poisson(link="log"),data=dat)
-stol = glm(stolon+1 ~ X461*X262*w_avg,family=quasipoisson(link="log"),data=dat) #evidence for underdispersion
+stol = glm(stolon ~ X461*X262*w_avg,family=poisson(link="log"),data=dat) #evidence for underdispersion
+hurdle(stolon ~ X461*X262*w_avg|X461*X262*w_avg,family=poisson(link="log"),data=dat)
 summary(stol)
 AIC(stol)
 
-pchisq(summary(stol)$dispersion * stol$df.residual, stol$df.residual) # significance for dispersion; p = 2.077518e-05
+1-pchisq(stol$deviance,stol$df.residual) #no significant dispersion, need to do quasipoission family model
+
 
 #Wald's chi square test
 Anova(stol,test.statistic = "Wald")
@@ -877,144 +1051,17 @@ ggplot(stol_plot, aes(x=trt,y=emmean)) +
         axis.title.x = element_blank())
 ```
 
-#Nodule mass
+###chlorophyll content
 ```{r}
-#plot average and CI
-
-nod_mass_raw = dat %>% group_by(w_avg,X461,X262,trt) %>% summarise(mean = mean(nod_avg_biomass_mg),l.CI = mean(nod_avg_biomass_mg)-CI(nod_avg_biomass_mg),u.CI = mean(nod_avg_biomass_mg)+CI(nod_avg_biomass_mg))
-nod_mass_raw$trt = factor(nod_mass_raw$trt,levels = c("Apo","262","461","Mix"))
-
-ggplot(subset(nod_mass_raw,w_avg!="16"&trt!="Apo"), aes(x=trt,y=mean)) +
-  geom_point(size=5,position = position_dodge(width=0.75))+
-  geom_errorbar(aes(ymin=l.CI,ymax=u.CI),width=0.2,position = position_dodge(width=0.75)) +
-  ylab(expression(atop("Nodule biomass [mg "~nodule^-1~"]",paste("(mean \U00B1 CI, n = 5)")))) +
-  #xlab("Barcode presence") +
-  #scale_y_continuous(limits=c(0.03,0.05),breaks=seq(0.03,0.05,by=0.01))+
-  facet_grid(.~w_avg) +
-  theme_bw(base_size = 30) +
-  theme(panel.grid = element_blank(),
-        panel.border = element_rect(size = 1, colour = "black",fill=NA),
-        panel.background = element_rect(fill="white"),
-        axis.text.x=element_blank(),
-        axis.text.y=element_text(size=rel(0.9)),
-        axis.title.x = element_blank())
-
-
-nod_mass = lm(log(nod_avg_biomass_mg) ~ trt*w_avg,weights=leaf_T,data=subset(dat,trt!="Apo"&w_avg!="16"))
-
-summary(nod_mass)
-AIC(nod_mass)
-
-#assess normality
-nod_mass_res = residuals(nod_mass)
-summary(nod_mass_res)
-qqPlot(nod_mass_res)
-hist(nod_mass_res)
-boxplot(nod_mass_res)
-shapiro.test(nod_mass_res)
-
-#assess homoscedasticity
-plot(fitted(nod_mass),nod_mass_res);
-abline(h=0,lty=2);
-lines(smooth.spline(fitted(nod_mass),nod_mass_res));
-leveneTest(nod_mass_res ~ X461*X262*w_avg, data = dat)
-#looks okay
-
-Anova(nod_mass,test.statistic = "F")
-
-nod_mass_em = emmeans(nod_mass, ~ trt)
-pairs(nod_mass_em)
-multcomp::cld(nod_mass_em)
-
-ggplot(as.data.frame(nod_mass_em), aes(x=X262+X461,y=emmean)) +
-  geom_point(size=5)+
-  geom_errorbar(aes(ymin=emmean-SE,ymax=emmean+SE),width=0.2) +
-  ylab(expression(atop("dry plant nod_mass",paste("(mean \U00B1 SE, n = 5)")))) +
-  scale_y_continuous(limits=c(0.03,0.05),breaks=seq(0.03,0.05,by=0.01))+
-  facet_grid(.~w_avg) +
-  theme_bw(base_size = 30) +
-  theme(panel.grid = element_blank(),
-        panel.border = element_rect(size = 1, colour = "black",fill=NA),
-        panel.background = element_rect(fill="white"),
-        axis.text.x=element_text(size=rel(0.9)),
-        axis.text.y=element_text(size=rel(0.9)),
-        axis.title.x = element_blank())
-```
-
-#Nodule CFU
-```{r}
-#plot average and CI
-
-cfu_raw = dat %>% group_by(w_avg,X461,X262,trt) %>% summarise(mean = mean(CFU_nod),l.CI = mean(CFU_nod)-CI(CFU_nod),u.CI = mean(CFU_nod)+CI(CFU_nod))
-cfu_raw$trt = factor(cfu_raw$trt,levels = c("Apo","262","461","Mix"))
-
-ggplot(subset(cfu_raw,w_avg!="16"&trt!="Apo"), aes(x=trt,y=mean)) +
-  geom_point(size=5,position = position_dodge(width=0.75))+
-  geom_errorbar(aes(ymin=l.CI,ymax=u.CI),width=0.2,position = position_dodge(width=0.75)) +
-  ylab(expression(atop("Nodule biomass [mg "~nodule^-1~"]",paste("(mean \U00B1 CI, n = 5)")))) +
-  #xlab("Barcode presence") +
-  #scale_y_continuous(limits=c(0.03,0.05),breaks=seq(0.03,0.05,by=0.01))+
-  facet_grid(.~w_avg) +
-  theme_bw(base_size = 30) +
-  theme(panel.grid = element_blank(),
-        panel.border = element_rect(size = 1, colour = "black",fill=NA),
-        panel.background = element_rect(fill="white"),
-        axis.text.x=element_blank(),
-        axis.text.y=element_text(size=rel(0.9)),
-        axis.title.x = element_blank())
-
-
-cfu = lm(log10(CFU_nod) ~ trt*w_avg,weights=leaf_T,data=subset(dat,trt!="Apo"&w_avg!="16"))
-cfu = lm(log(nod_avg_biomass_mg) ~ trt,weights=leaf_T,data=subset(dat,trt!="Apo"&w_avg!="16"))
-summary(cfu)
-AIC(cfu)
-
-#assess normality
-cfu_res = residuals(cfu)
-summary(cfu_res)
-qqPlot(cfu_res)
-hist(cfu_res)
-boxplot(cfu_res)
-shapiro.test(cfu_res)
-
-#assess homoscedasticity
-plot(fitted(cfu),cfu_res);
-abline(h=0,lty=2);
-lines(smooth.spline(fitted(cfu),cfu_res));
-leveneTest(cfu_res ~ X461*X262*w_avg, data = dat)
-#looks okay
-
-Anova(cfu,test.statistic = "F")
-
-cfu_em = emmeans(cfu, ~ trt|w_avg)
-pairs(cfu_em)
-multcomp::cld(cfu_em)
-
-ggplot(as.data.frame(cfu_em), aes(x=X262+X461,y=emmean)) +
-  geom_point(size=5)+
-  geom_errorbar(aes(ymin=emmean-SE,ymax=emmean+SE),width=0.2) +
-  ylab(expression(atop("dry plant cfu",paste("(mean \U00B1 SE, n = 5)")))) +
-  scale_y_continuous(limits=c(0.03,0.05),breaks=seq(0.03,0.05,by=0.01))+
-  facet_grid(.~w_avg) +
-  theme_bw(base_size = 30) +
-  theme(panel.grid = element_blank(),
-        panel.border = element_rect(size = 1, colour = "black",fill=NA),
-        panel.background = element_rect(fill="white"),
-        axis.text.x=element_text(size=rel(0.9)),
-        axis.text.y=element_text(size=rel(0.9)),
-        axis.title.x = element_blank())
-```
-
-#chlorophyll
-```{r}
-#plot average and CI
+#plot average and CI to visualize raw data
 
 chlor_raw = dat %>% group_by(w_avg,X461,X262,trt) %>% summarise(mean = mean(chlor),l.CI = mean(chlor)-CI(chlor),u.CI = mean(chlor)+CI(chlor))
 chlor_raw$trt = factor(chlor_raw$trt,levels = c("Apo","262","461","Mix"))
 
-ggplot(as.data.frame(chlor_raw), aes(x=trt,y=mean)) +
+ggplot(as.data.frame(dat), aes(x=d_post_inoc,y=chlor)) +
   geom_point(size=5,position = position_dodge(width=0.75))+
   geom_errorbar(aes(ymin=l.CI,ymax=u.CI),width=0.2,position = position_dodge(width=0.75)) +
+  geom_smooth(method = "loess")+
   ylab(expression(atop("Chlorophyll content",paste("(mean \U00B1 CI, n = 5)")))) +
   #xlab("Barcode presence") +
   #scale_y_continuous(limits=c(0.03,0.05),breaks=seq(0.03,0.05,by=0.01))+
@@ -1023,7 +1070,7 @@ ggplot(as.data.frame(chlor_raw), aes(x=trt,y=mean)) +
   theme(panel.grid = element_blank(),
         panel.border = element_rect(size = 1, colour = "black",fill=NA),
         panel.background = element_rect(fill="white"),
-        axis.text.x=element_blank(),
+        axis.text.x=element_text(size=rel(0.9)),
         axis.text.y=element_text(size=rel(0.9)),
         axis.title.x = element_blank())
 
@@ -1130,3 +1177,147 @@ ggplot(as.data.frame(photo_em), aes(x=X262+X461,y=emmean)) +
         axis.text.y=element_text(size=rel(0.9)),
         axis.title.x = element_blank())
 ```
+
+##Rhizobia fitness
+
+###Nodule related analyses
+
+####Nodule biomass
+```{r}
+#plot average and CI
+nod_mass_raw = dat %>% group_by(w_avg,X461,X262,trt) %>% summarise(mean = mean(nod_avg_biomass_mg),l.CI = mean(nod_avg_biomass_mg)-CI(nod_avg_biomass_mg),u.CI = mean(nod_avg_biomass_mg)+CI(nod_avg_biomass_mg))
+nod_mass_raw$trt = factor(nod_mass_raw$trt,levels = c("Apo","262","461","Mix"))
+
+ggplot(subset(nod_mass_raw,w_avg!="16"&trt!="Apo"), aes(x=trt,y=mean)) +
+  geom_point(size=5,position = position_dodge(width=0.75))+
+  geom_errorbar(aes(ymin=l.CI,ymax=u.CI),width=0.2,position = position_dodge(width=0.75)) +
+  ylab(expression(atop("Nodule biomass [mg "~nodule^-1~"]",paste("(mean \U00B1 CI, n = 5)")))) +
+  #xlab("Barcode presence") +
+  #scale_y_continuous(limits=c(0.03,0.05),breaks=seq(0.03,0.05,by=0.01))+
+  facet_grid(.~w_avg) +
+  theme_bw(base_size = 30) +
+  theme(panel.grid = element_blank(),
+        panel.border = element_rect(size = 1, colour = "black",fill=NA),
+        panel.background = element_rect(fill="white"),
+        axis.text.x=element_text(size=rel(0.9)),
+        axis.text.y=element_text(size=rel(0.9)),
+        axis.title.x = element_blank())
+
+#############################
+
+#Assess the variation among treatments for nodule biomass. Residuals are not normally distributed, so log-transformed to reduce skew. The analysis is weighted to leaf count to account for variation in plant development across time
+
+nod_mass = lm(log(nod_avg_biomass_mg) ~ trt*w_avg,weights=leaf_T,data=subset(dat,trt!="Apo"&w_avg!="16"))
+anova(nod_mass_date,nod_mass)
+
+summary(nod_mass)
+summary(nod_massl)
+summary(nod_massb)
+AIC(nod_mass)
+AIC(nod_massl)
+AIC(nod_massb)
+
+#assess normality
+nod_mass_res = residuals(nod_mass_date)
+summary(nod_mass_res)
+qqPlot(nod_mass_res)
+hist(nod_mass_res)
+boxplot(nod_mass_res)
+shapiro.test(nod_mass_res)
+
+#assess homoscedasticity
+plot(fitted(nod_mass),nod_mass_res);
+abline(h=0,lty=2);
+lines(smooth.spline(fitted(nod_mass),nod_mass_res));
+leveneTest(nod_mass_res ~ X461*X262*w_avg, data = dat)
+#looks okay
+
+Anova(nod_mass_date)
+Anova(nod_massb)
+Anova(nod_massl)
+
+nod_mass_em = emmeans(nod_mass, ~ trt)
+pairs(nod_mass_em)
+multcomp::cld(nod_mass_em)
+
+ggplot(as.data.frame(nod_mass_em), aes(x=X262+X461,y=emmean)) +
+  geom_point(size=5)+
+  geom_errorbar(aes(ymin=emmean-SE,ymax=emmean+SE),width=0.2) +
+  ylab(expression(atop("dry plant nod_mass",paste("(mean \U00B1 SE, n = 5)")))) +
+  scale_y_continuous(limits=c(0.03,0.05),breaks=seq(0.03,0.05,by=0.01))+
+  facet_grid(.~w_avg) +
+  theme_bw(base_size = 30) +
+  theme(panel.grid = element_blank(),
+        panel.border = element_rect(size = 1, colour = "black",fill=NA),
+        panel.background = element_rect(fill="white"),
+        axis.text.x=element_text(size=rel(0.9)),
+        axis.text.y=element_text(size=rel(0.9)),
+        axis.title.x = element_blank())
+```
+
+#Nodule CFU
+```{r}
+#plot average and CI
+
+cfu_raw = dat %>% group_by(w_avg,X461,X262,trt) %>% summarise(mean = mean(CFU_nod),l.CI = mean(CFU_nod)-CI(CFU_nod),u.CI = mean(CFU_nod)+CI(CFU_nod))
+cfu_raw$trt = factor(cfu_raw$trt,levels = c("Apo","262","461","Mix"))
+
+ggplot(subset(cfu_raw,w_avg!="16"&trt!="Apo"), aes(x=trt,y=mean)) +
+  geom_point(size=5,position = position_dodge(width=0.75))+
+  geom_errorbar(aes(ymin=l.CI,ymax=u.CI),width=0.2,position = position_dodge(width=0.75)) +
+  ylab(expression(atop("Nodule biomass [mg "~nodule^-1~"]",paste("(mean \U00B1 CI, n = 5)")))) +
+  #xlab("Barcode presence") +
+  #scale_y_continuous(limits=c(0.03,0.05),breaks=seq(0.03,0.05,by=0.01))+
+  facet_grid(.~w_avg) +
+  theme_bw(base_size = 30) +
+  theme(panel.grid = element_blank(),
+        panel.border = element_rect(size = 1, colour = "black",fill=NA),
+        panel.background = element_rect(fill="white"),
+        axis.text.x=element_blank(),
+        axis.text.y=element_text(size=rel(0.9)),
+        axis.title.x = element_blank())
+
+
+cfu = lm(log10(CFU_nod) ~ trt*w_avg,weights=leaf_T,data=subset(dat,trt!="Apo"&w_avg!="16"))
+cfu = lm(log(nod_avg_biomass_mg) ~ trt,weights=leaf_T,data=subset(dat,trt!="Apo"&w_avg!="16"))
+summary(cfu)
+AIC(cfu)
+
+#assess normality
+cfu_res = residuals(cfu)
+summary(cfu_res)
+qqPlot(cfu_res)
+hist(cfu_res)
+boxplot(cfu_res)
+shapiro.test(cfu_res)
+
+#assess homoscedasticity
+plot(fitted(cfu),cfu_res);
+abline(h=0,lty=2);
+lines(smooth.spline(fitted(cfu),cfu_res));
+leveneTest(cfu_res ~ X461*X262*w_avg, data = dat)
+#looks okay
+
+Anova(cfu,test.statistic = "F")
+
+cfu_em = emmeans(cfu, ~ trt|w_avg)
+pairs(cfu_em)
+multcomp::cld(cfu_em)
+
+ggplot(as.data.frame(cfu_em), aes(x=X262+X461,y=emmean)) +
+  geom_point(size=5)+
+  geom_errorbar(aes(ymin=emmean-SE,ymax=emmean+SE),width=0.2) +
+  ylab(expression(atop("dry plant cfu",paste("(mean \U00B1 SE, n = 5)")))) +
+  scale_y_continuous(limits=c(0.03,0.05),breaks=seq(0.03,0.05,by=0.01))+
+  facet_grid(.~w_avg) +
+  theme_bw(base_size = 30) +
+  theme(panel.grid = element_blank(),
+        panel.border = element_rect(size = 1, colour = "black",fill=NA),
+        panel.background = element_rect(fill="white"),
+        axis.text.x=element_text(size=rel(0.9)),
+        axis.text.y=element_text(size=rel(0.9)),
+        axis.title.x = element_blank())
+```
+
+
+##Summary of association plant traits and 
